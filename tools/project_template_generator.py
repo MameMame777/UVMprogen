@@ -48,6 +48,16 @@ class ProjectTemplateGenerator:
             "sim/config/filelists",
             "sim/output",
             
+            # Implementation directories (配置配線用)
+            "impl",
+            "impl/constraints",
+            "impl/scripts",
+            "impl/reports",
+            "impl/bitstream",
+            "impl/projects",
+            "impl/ip",
+            "impl/bd",  # Block Design
+            
             # Documentation and tools
             "docs",
             "tools",
@@ -626,6 +636,427 @@ exit /b 0
 """
         self._write_file("sim/run", "run.bat", run_script_content)
     
+    def generate_implementation_templates(self):
+        """Generate implementation (配置配線) template files"""
+        
+        # Constraints file template
+        constraints_content = f"""# {self.project_name} - Implementation Constraints
+# File: {self.project_name.lower()}_constraints.xdc
+# Generated: {datetime.now().strftime('%Y-%m-%d')}
+
+# ================================================================================
+# Clock Constraints
+# ================================================================================
+
+# Primary clock constraint
+create_clock -period 10.000 -name sys_clk -waveform {{0.000 5.000}} [get_ports clk]
+
+# Generated clocks (if any)
+# create_generated_clock -name clk_div2 -source [get_ports clk] -divide_by 2 [get_pins clk_div_inst/Q]
+
+# ================================================================================
+# Input/Output Constraints
+# ================================================================================
+
+# Input delay constraints
+set_input_delay -clock [get_clocks sys_clk] -min 2.000 [get_ports {{reset}}]
+set_input_delay -clock [get_clocks sys_clk] -max 8.000 [get_ports {{reset}}]
+
+# Output delay constraints
+# set_output_delay -clock [get_clocks sys_clk] -min 1.000 [get_ports {{output_port}}]
+# set_output_delay -clock [get_clocks sys_clk] -max 6.000 [get_ports {{output_port}}]
+
+# ================================================================================
+# Physical Constraints (Board-specific)
+# ================================================================================
+
+# Pin assignments (customize for your board)
+# set_property PACKAGE_PIN E3 [get_ports clk]
+# set_property IOSTANDARD LVCMOS33 [get_ports clk]
+
+# set_property PACKAGE_PIN C12 [get_ports reset]
+# set_property IOSTANDARD LVCMOS33 [get_ports reset]
+
+# ================================================================================
+# Timing Exceptions
+# ================================================================================
+
+# False paths
+# set_false_path -from [get_clocks clk1] -to [get_clocks clk2]
+
+# Maximum delay constraints
+# set_max_delay 8.000 -from [get_ports input_port] -to [get_ports output_port]
+
+# ================================================================================
+# Implementation Directives
+# ================================================================================
+
+# Synthesis directives
+# set_property KEEP_HIERARCHY SOFT [get_cells instance_name]
+
+# Place and Route directives
+# set_property LOC SLICE_X0Y0 [get_cells instance_name]
+
+# TODO: Add board-specific constraints
+# TODO: Add {self.protocol.upper()} protocol-specific timing constraints
+"""
+        self._write_file("impl/constraints", f"{self.project_name.lower()}_constraints.xdc", constraints_content)
+        
+        # Vivado TCL script template
+        vivado_script_content = f"""# {self.project_name} - Vivado Implementation Script
+# File: build_project.tcl
+# Generated: {datetime.now().strftime('%Y-%m-%d')}
+
+# ================================================================================
+# Project Configuration
+# ================================================================================
+
+set project_name "{self.project_name.lower()}"
+set project_dir "./projects"
+set part_name "xc7a35tcpg236-1"  # Default part - customize for your board
+set board_part ""  # Set board part if using a development board
+
+# Create project directory
+file mkdir $project_dir
+
+# ================================================================================
+# Create Vivado Project
+# ================================================================================
+
+# Create project
+create_project $project_name $project_dir/$project_name -part $part_name -force
+
+# Set board part if specified
+if {{$board_part != ""}} {{
+    set_property board_part $board_part [current_project]
+}}
+
+# ================================================================================
+# Add Source Files
+# ================================================================================
+
+# Add RTL files
+add_files -fileset sources_1 [glob ../rtl/*.sv]
+add_files -fileset sources_1 [glob ../rtl/interfaces/*.sv]
+
+# Add constraint files
+add_files -fileset constrs_1 [glob ../constraints/*.xdc]
+
+# Set top module
+set_property top {self.project_name.title()}_Core [current_fileset]
+
+# ================================================================================
+# IP Management
+# ================================================================================
+
+# Add IP files (if any)
+# add_files -fileset sources_1 [glob ../ip/*.xci]
+
+# Upgrade IP (if needed)
+# upgrade_ip [get_ips]
+
+# ================================================================================
+# Synthesis
+# ================================================================================
+
+proc run_synthesis {{}} {{
+    global project_name
+    
+    puts "Starting synthesis for $project_name..."
+    
+    # Reset synthesis run
+    reset_run synth_1
+    
+    # Launch synthesis
+    launch_runs synth_1 -jobs 4
+    wait_on_run synth_1
+    
+    # Check synthesis results
+    if {{[get_property PROGRESS [get_runs synth_1]] != "100%"}} {{
+        error "Synthesis failed!"
+    }}
+    
+    puts "Synthesis completed successfully"
+    
+    # Open synthesized design for analysis
+    open_run synth_1 -name synth_1
+    
+    # Generate synthesis reports
+    report_timing_summary -file ../reports/synthesis_timing.rpt
+    report_utilization -file ../reports/synthesis_utilization.rpt
+    report_power -file ../reports/synthesis_power.rpt
+}}
+
+# ================================================================================
+# Implementation
+# ================================================================================
+
+proc run_implementation {{}} {{
+    global project_name
+    
+    puts "Starting implementation for $project_name..."
+    
+    # Reset implementation runs
+    reset_run impl_1
+    
+    # Launch implementation
+    launch_runs impl_1 -jobs 4
+    wait_on_run impl_1
+    
+    # Check implementation results
+    if {{[get_property PROGRESS [get_runs impl_1]] != "100%"}} {{
+        error "Implementation failed!"
+    }}
+    
+    puts "Implementation completed successfully"
+    
+    # Open implemented design
+    open_run impl_1
+    
+    # Generate implementation reports
+    report_timing_summary -file ../reports/implementation_timing.rpt
+    report_utilization -file ../reports/implementation_utilization.rpt
+    report_route_status -file ../reports/route_status.rpt
+    report_drc -file ../reports/drc.rpt
+    report_power -file ../reports/implementation_power.rpt
+}}
+
+# ================================================================================
+# Bitstream Generation
+# ================================================================================
+
+proc generate_bitstream {{}} {{
+    global project_name
+    
+    puts "Generating bitstream for $project_name..."
+    
+    # Launch bitstream generation
+    launch_runs impl_1 -to_step write_bitstream -jobs 4
+    wait_on_run impl_1
+    
+    # Check bitstream generation results
+    if {{[get_property PROGRESS [get_runs impl_1]] != "100%"}} {{
+        error "Bitstream generation failed!"
+    }}
+    
+    puts "Bitstream generation completed successfully"
+    
+    # Copy bitstream to output directory
+    file copy -force ./projects/$project_name/$project_name.runs/impl_1/$project_name.bit ../bitstream/
+    
+    puts "Bitstream saved to ../bitstream/$project_name.bit"
+}}
+
+# ================================================================================
+# Complete Build Flow
+# ================================================================================
+
+proc build_all {{}} {{
+    run_synthesis
+    run_implementation
+    generate_bitstream
+    
+    puts "Complete build flow finished successfully!"
+}}
+
+# ================================================================================
+# Usage Instructions
+# ================================================================================
+
+puts "Vivado build script loaded for {self.project_name}"
+puts ""
+puts "Available commands:"
+puts "  run_synthesis        - Run synthesis only"
+puts "  run_implementation   - Run implementation only"
+puts "  generate_bitstream   - Generate bitstream only"
+puts "  build_all           - Run complete flow"
+puts ""
+puts "Example usage:"
+puts "  vivado -mode tcl -source build_project.tcl -tclargs build_all"
+"""
+        self._write_file("impl/scripts", "build_project.tcl", vivado_script_content)
+        
+        # Implementation makefile
+        makefile_content = f"""# {self.project_name} - Implementation Makefile
+# Generated: {datetime.now().strftime('%Y-%m-%d')}
+
+PROJECT_NAME = {self.project_name.lower()}
+VIVADO = vivado
+TCL_SCRIPT = scripts/build_project.tcl
+
+# Default target
+.PHONY: all
+all: bitstream
+
+# Create directories
+.PHONY: setup
+setup:
+	@mkdir -p projects reports bitstream ip bd
+	@echo "Implementation directories created"
+
+# Synthesis only
+.PHONY: synth
+synth: setup
+	@echo "Running synthesis..."
+	@cd scripts && $(VIVADO) -mode batch -source build_project.tcl -tclargs run_synthesis
+	@echo "Synthesis completed"
+
+# Implementation only
+.PHONY: impl
+impl: setup
+	@echo "Running implementation..."
+	@cd scripts && $(VIVADO) -mode batch -source build_project.tcl -tclargs run_implementation
+	@echo "Implementation completed"
+
+# Bitstream generation
+.PHONY: bitstream
+bitstream: setup
+	@echo "Running complete build flow..."
+	@cd scripts && $(VIVADO) -mode batch -source build_project.tcl -tclargs build_all
+	@echo "Bitstream generation completed"
+
+# Interactive mode
+.PHONY: gui
+gui: setup
+	@echo "Opening Vivado GUI..."
+	@cd scripts && $(VIVADO) -mode gui -source build_project.tcl
+
+# Clean build artifacts
+.PHONY: clean
+clean:
+	@echo "Cleaning build artifacts..."
+	@rm -rf projects/* reports/* bitstream/*
+	@echo "Clean completed"
+
+# Show help
+.PHONY: help
+help:
+	@echo "Available targets:"
+	@echo "  setup     - Create implementation directories"
+	@echo "  synth     - Run synthesis only"
+	@echo "  impl      - Run implementation only"
+	@echo "  bitstream - Run complete flow and generate bitstream"
+	@echo "  gui       - Open Vivado GUI"
+	@echo "  clean     - Clean build artifacts"
+	@echo "  help      - Show this help"
+
+# Board-specific targets (examples)
+.PHONY: arty
+arty: BOARD_PART = digilentinc.com:arty-a7-35:part0:1.0
+arty: bitstream
+
+.PHONY: basys3
+basys3: BOARD_PART = digilentinc.com:basys3:part0:1.1
+basys3: bitstream
+"""
+        self._write_file("impl", "Makefile", makefile_content)
+        
+        # IP catalog template
+        ip_readme_content = f"""# {self.project_name} - IP Catalog
+
+## Overview
+
+This directory contains IP cores used in the {self.project_name} project.
+
+## IP Core Management
+
+### Adding New IP Cores
+
+1. **Using Vivado IP Catalog:**
+   ```tcl
+   # In Vivado TCL console
+   create_ip -name clk_wiz -vendor xilinx.com -library ip -module_name clk_gen
+   ```
+
+2. **From Third-Party Sources:**
+   - Place IP files (.xci, .xcix) in this directory
+   - Update the build script to include new IP cores
+
+### IP Core Examples
+
+- **Clock Management:** Clock wizard, MMCM, PLL cores
+- **Memory Controllers:** MIG (Memory Interface Generator)
+- **Communication:** AXI interconnect, protocol converters
+- **DSP:** FIR filters, FFT cores
+- **Custom IP:** Project-specific IP blocks
+
+### IP Upgrade Process
+
+When migrating to newer Vivado versions:
+
+```tcl
+# Upgrade all IP cores
+upgrade_ip [get_ips]
+```
+
+## TODO
+
+- [ ] Add clock generation IP for {self.protocol.upper()} protocol
+- [ ] Configure memory interface if needed
+- [ ] Add protocol-specific IP cores
+- [ ] Create custom IP for {self.project_name}
+"""
+        self._write_file("impl/ip", "README.md", ip_readme_content)
+        
+        # Block Design template
+        bd_readme_content = f"""# {self.project_name} - Block Design
+
+## Overview
+
+This directory contains Vivado Block Design (.bd) files for the {self.project_name} project.
+
+## Block Design Usage
+
+### Creating Block Designs
+
+1. **In Vivado GUI:**
+   - File → Create Block Design
+   - Add IP cores and interconnects
+   - Export to TCL for version control
+
+2. **TCL Script Generation:**
+   ```tcl
+   # Export block design to TCL
+   write_bd_tcl -force ../bd/system_bd.tcl
+   ```
+
+### Block Design Examples
+
+- **System Integration:** Top-level system with processors
+- **Protocol Bridges:** {self.protocol.upper()} to other protocols
+- **Memory Subsystems:** DDR controllers with caches
+- **Processing Pipelines:** DSP chains and data flows
+
+### Integration with RTL
+
+Block designs can be integrated with custom RTL:
+
+```systemverilog
+// Instantiate block design in RTL
+system_wrapper system_i (
+    .clk(clk),
+    .reset(reset),
+    // Other ports...
+);
+```
+
+## Best Practices
+
+- Keep block designs modular
+- Use hierarchical designs for complex systems
+- Export TCL scripts for version control
+- Document interface specifications
+- Use consistent naming conventions
+
+## TODO
+
+- [ ] Create system block design for {self.project_name}
+- [ ] Add {self.protocol.upper()} interconnect
+- [ ] Integrate with RTL modules
+- [ ] Add debugging interfaces (ILA, VIO)
+"""
+        self._write_file("impl/bd", "README.md", bd_readme_content)
+    
     def generate_documentation(self):
         """Generate documentation templates"""
         
@@ -661,12 +1092,22 @@ using UVM (Universal Verification Methodology) and the DSIM simulator.
 │  ├─ run/               # Execution scripts
 │  ├─ config/            # Configuration files
 │  └─ output/            # Output files
+├─ impl/                  # Implementation (配置配線)
+│  ├─ constraints/       # Timing and physical constraints
+│  ├─ scripts/           # Build scripts (TCL)
+│  ├─ reports/           # Implementation reports
+│  ├─ bitstream/         # Generated bitstreams
+│  ├─ projects/          # Vivado project files
+│  ├─ ip/                # IP cores
+│  └─ bd/                # Block designs
 ├─ tools/                # Utility scripts
 ├─ docs/                 # Documentation
 └─ .github/workflows/    # CI/CD pipeline
 ```
 
 ## Quick Start
+
+### Verification Flow
 
 Navigate to the `sim/run` directory and use the unified test execution system:
 
@@ -678,6 +1119,29 @@ cd sim/run
 
 # Execute a specific test
 .\\run.bat {self.protocol}_base
+```
+
+### Implementation Flow
+
+Navigate to the `impl` directory and use the build system:
+
+```bash
+cd impl
+
+# Run complete implementation flow
+make bitstream
+
+# Run synthesis only
+make synth
+
+# Run implementation only
+make impl
+
+# Open Vivado GUI
+make gui
+
+# Clean build artifacts
+make clean
 ```
 
 ## Available Tests
@@ -706,11 +1170,20 @@ This project includes a complete UVM verification environment with:
 
 ## TODO
 
+### RTL Design
 - [ ] Implement {self.protocol.upper()} protocol signals
 - [ ] Add comprehensive test scenarios
 - [ ] Implement driver and monitor logic
 - [ ] Add scoreboard verification
 - [ ] Create advanced test sequences
+
+### Implementation
+- [ ] Add board-specific pin constraints
+- [ ] Optimize timing constraints for {self.protocol.upper()}
+- [ ] Add clock management IP cores
+- [ ] Create system block design
+- [ ] Implement power optimization
+- [ ] Add debugging interfaces (ILA, VIO)
 
 ## References
 
@@ -838,6 +1311,30 @@ sim/output/*.db
 sim/output/dsim_work/
 sim/output/exec/
 
+# Implementation outputs
+impl/projects/*/
+impl/reports/*.rpt
+impl/reports/*.log
+impl/bitstream/*.bit
+impl/bitstream/*.bin
+impl/bitstream/*.mcs
+
+# Vivado files
+*.jou
+*.log
+*.str
+*.xpr
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.srcs/
+
+# IP cores
+*.xci
+*.xcix
+
 # Temporary files
 *.tmp
 *.temp
@@ -894,6 +1391,7 @@ coverage/
         self.generate_rtl_templates()
         uvm_files = self.generate_uvm_templates()
         self.generate_simulation_config()
+        self.generate_implementation_templates()
         self.generate_documentation()
         self.generate_github_actions()
         self.generate_gitignore()
@@ -918,7 +1416,9 @@ coverage/
         print("4. Add transaction constraints for your use case")
         print("5. Configure simulation environment")
         print("6. Run tests: cd sim/run && .\\run.bat [test_name]")
-        print("7. Set up CI/CD pipeline")
+        print("7. Add board-specific constraints in impl/constraints/")
+        print("8. Run implementation: cd impl && make bitstream")
+        print("9. Set up CI/CD pipeline")
 
 def main():
     parser = argparse.ArgumentParser(description='Generate FPGA verification project template')
