@@ -1,0 +1,69 @@
+{
+  "project_templates": {
+    "axi4_verification": {
+      "description": "AXI4 protocol verification project",
+      "protocol": "AXI4",
+      "simulator": "dsim",
+      "features": [
+        "uvm_environment",
+        "scoreboard",
+        "coverage_analysis",
+        "github_actions"
+      ],
+      "test_scenarios": [
+        "reset_test",
+        "basic_read_write",
+        "burst_transactions",
+        "error_injection"
+      ]
+    },
+    "simple_rtl_verification": {
+      "description": "Simple RTL module verification",
+      "protocol": "custom",
+      "simulator": "dsim",
+      "features": [
+        "basic_testbench",
+        "github_actions"
+      ],
+      "test_scenarios": [
+        "basic_functionality",
+        "edge_cases"
+      ]
+    },
+    "pcie_verification": {
+      "description": "PCIe protocol verification project",
+      "protocol": "PCIe",
+      "simulator": "dsim",
+      "features": [
+        "uvm_environment",
+        "tlm_analysis",
+        "performance_monitoring"
+      ],
+      "test_scenarios": [
+        "configuration_space",
+        "memory_mapped_io",
+        "interrupt_handling"
+      ]
+    }
+  },
+  "simulator_configs": {
+    "dsim": {
+      "license_path": "%USERPROFILE%\\AppData\\Local\\metrics-ca\\dsim-license.json",
+      "activation_script": "%USERPROFILE%\\AppData\\Local\\metrics-ca\\dsim\\20240422.0.0\\shell_activate.bat",
+      "compile_flags": ["-uvm 1.2", "+acc"],
+      "wave_format": "mxd"
+    },
+    "questa": {
+      "license_path": "$LM_LICENSE_FILE",
+      "activation_script": "vsim",
+      "compile_flags": ["+UVM_VERBOSITY=UVM_MEDIUM"],
+      "wave_format": "wlf"
+    }
+  },
+  "naming_conventions": {
+    "module_names": "Snake_Case",
+    "signal_names": "snake_case",
+    "class_names": "snake_case",
+    "file_extensions": ".sv"
+  }
+}
